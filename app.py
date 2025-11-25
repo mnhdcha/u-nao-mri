@@ -23,20 +23,32 @@ def crop_brain_contour(image, plot=False):
         return new_image
     return image
 
-# Hàm Grad-CAM (Đã sửa lỗi ngoặc vuông model.inputs)
+# --- HÀM GRAD-CAM "BỌC GIÁP" (Fix mọi lỗi version) ---
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # Tạo model để lấy gradient
-    # LƯU Ý: Dùng model.inputs (không có ngoặc vuông bao quanh)
+    # 1. Tạo model phụ
+    # Sử dụng model.inputs (số nhiều) để an toàn nhất
     grad_model = tf.keras.models.Model(
         model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
+    # 2. Tính toán Gradient
     with tf.GradientTape() as tape:
         last_conv_layer_output, preds = grad_model(img_array)
+        
+        # --- ĐOẠN CODE TRỊ LỖI QUAN TRỌNG NHẤT ---
+        # Kiểm tra: Nếu preds bị trả về dạng List (do khác version), lấy phần tử đầu tiên
+        if isinstance(preds, list):
+            preds = preds[0]
+        
+        # Đảm bảo nó là Tensor để tính toán được
+        preds = tf.convert_to_tensor(preds)
+        # -----------------------------------------
+
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
 
+    # 3. Xử lý Heatmap
     grads = tape.gradient(class_channel, last_conv_layer_output)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     last_conv_layer_output = last_conv_layer_output[0]
