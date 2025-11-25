@@ -23,10 +23,12 @@ def crop_brain_contour(image, plot=False):
         return new_image
     return image
 
-# 2. Hàm Grad-CAM (Đã tối ưu cho mô hình mới)
+# Hàm Grad-CAM (Đã sửa lỗi ngoặc vuông model.inputs)
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
+    # Tạo model để lấy gradient
+    # LƯU Ý: Dùng model.inputs (không có ngoặc vuông bao quanh)
     grad_model = tf.keras.models.Model(
-        [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
+        model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
     with tf.GradientTape() as tape:
