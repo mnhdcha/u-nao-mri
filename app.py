@@ -112,13 +112,9 @@ if uploaded_file is not None:
         
         # --- GRAD-CAM ---
         try:
-            # Tự động tìm lớp convolution cuối cùng
-            last_conv_layer_name = ""
-            for layer in reversed(model.layers):
-                if 'conv' in layer.name or 'activation' in layer.name: 
-                    if len(layer.output_shape) == 4:
-                        last_conv_layer_name = layer.name
-                        break
+# Chỉ định trực tiếp tên lớp cuối cùng của EfficientNetB0
+            # Dựa trên cấu trúc model bạn đã train, tên của nó là 'top_activation'
+            last_conv_layer_name = "top_activation"
             
             heatmap = make_gradcam_heatmap(input_data, model, last_conv_layer_name)
             
