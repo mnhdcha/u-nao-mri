@@ -3,7 +3,29 @@ import tensorflow as tf
 import cv2
 import numpy as np
 from tensorflow.keras.applications.efficientnet import preprocess_input # Dùng hàm chuẩn
-
+# --- TỪ ĐIỂN Y KHOA (Kiến thức cho AI) ---
+medical_info = {
+    "Glioma": {
+        "description": "U thần kinh đệm (Glioma) là loại u não phổ biến nhất bắt nguồn từ các tế bào thần kinh đệm. Khối u thường có tính chất xâm lấn.",
+        "risk": "⚠️ Mức độ: Cần chú ý cao (Thường ác tính)",
+        "recommendation": "Đề xuất: Cần chụp MRI có thuốc cản quang để xác định ranh giới u. Hội chẩn phẫu thuật hoặc xạ trị tùy vị trí."
+    },
+    "Meningioma": {
+        "description": "U màng não (Meningioma) xuất phát từ màng nhện bao quanh não. Đa số là lành tính và phát triển chậm.",
+        "risk": "ℹ️ Mức độ: Thường lành tính",
+        "recommendation": "Đề xuất: Theo dõi định kỳ nếu u nhỏ. Phẫu thuật cắt bỏ nếu u gây chèn ép thần kinh."
+    },
+    "Pituitary": {
+        "description": "U tuyến yên (Pituitary Tumor) nằm ở hố yên, có thể gây rối loạn nội tiết hoặc chèn ép giao thoa thị giác (mờ mắt).",
+        "risk": "ℹ️ Mức độ: Thường lành tính nhưng ảnh hưởng chức năng",
+        "recommendation": "Đề xuất: Xét nghiệm hormone, kiểm tra thị trường mắt. Điều trị nội khoa hoặc phẫu thuật qua xoang bướm."
+    },
+    "No Tumor": {
+        "description": "Không phát hiện khối u bất thường rõ rệt trên hình ảnh MRI này.",
+        "risk": "✅ Mức độ: Bình thường",
+        "recommendation": "Đề xuất: Duy trì lối sống lành mạnh. Nếu vẫn có triệu chứng đau đầu, hãy khám chuyên khoa thần kinh để loại trừ nguyên nhân khác."
+    }
+}
 # 1. Hàm tự động cắt viền đen (Giữ nguyên vì đã tốt)
 def crop_brain_contour(image, plot=False):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -146,3 +168,20 @@ if uploaded_file is not None:
                 
         except Exception as e:
             st.error(f"Không thể tạo Grad-CAM: {e}")
+# --- HIỂN THỊ HỒ SƠ BỆNH ÁN (Thêm đoạn này) ---
+        info = medical_info[predicted_class]
+        
+        st.write("---") # Đường kẻ ngang
+        st.subheader("📋 Hồ sơ chẩn đoán lâm sàng")
+        
+        # Chia cột để hiển thị đẹp hơn
+        c1, c2 = st.columns([1, 2])
+        
+        with c1:
+            st.metric(label="Đánh giá rủi ro", value=predicted_class, delta=info["risk"])
+        
+        with c2:
+            st.info(f"**Mô tả:** {info['description']}")
+            st.warning(f"**Khuyến nghị bác sĩ:** {info['recommendation']}")
+            
+        st.caption("⚠️ Lưu ý: Kết quả này chỉ mang tính chất tham khảo hỗ trợ, không thay thế chẩn đoán của bác sĩ chuyên khoa.")
