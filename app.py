@@ -75,14 +75,13 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
     heatmap = tf.squeeze(heatmap)
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     
-    # LƯU Ý: Không dùng che viền để đảm bảo bắt được u sát sọ
     return heatmap.numpy()
 
 # ==========================================
 # 3. GIAO DIỆN WEB
 # ==========================================
 st.set_page_config(page_title="Chẩn Đoán U Não AI", layout="wide")
-st.title("🧠 Hệ Thống Phân Tích MRI Não (Grad-CAM)")
+st.title("🧠 Hệ Thống Phân Tích MRI Não (EfficientNet + Grad-CAM)")
 
 @st.cache_resource
 def load_model():
@@ -133,8 +132,22 @@ if uploaded_file is not None:
             
             st.divider()
             
+            # --- HIỂN THỊ KẾT QUẢ VÀ % ĐỘ TIN CẬY (MỚI) ---
+            st.subheader("🔍 Kết quả phân tích:")
+            
+            # Đổi màu thông báo tùy theo độ tin cậy
+            if confidence > 90:
+                st.success(f"Kết luận: **{predicted_class}**")
+                st.progress(int(confidence), text=f"Độ tin cậy rất cao: {confidence:.2f}%")
+            elif confidence > 70:
+                st.warning(f"Kết luận: **{predicted_class}**")
+                st.progress(int(confidence), text=f"Độ tin cậy trung bình: {confidence:.2f}%")
+            else:
+                st.error(f"Kết luận: **{predicted_class}**")
+                st.progress(int(confidence), text=f"Độ tin cậy thấp: {confidence:.2f}% (Cần kiểm tra kỹ)")
+
             # --- TẠO GRAD-CAM (VÙNG ĐỎ) ---
-            last_conv_layer_name = "block7a_project_conv"
+            last_conv_layer_name = "block7a_project_conv" # Lớp này cho hình ảnh nét hơn
             heatmap = make_gradcam_heatmap(input_data, model, last_conv_layer_name)
             
             # Xử lý hiển thị màu
@@ -142,22 +155,24 @@ if uploaded_file is not None:
             heatmap_uint8 = np.uint8(255 * heatmap_resized)
             heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
             
-            # Chồng ảnh (Superimpose)
+            # Chồng ảnh
             superimposed_img = cv2.addWeighted(cropped_image, 0.6, heatmap_colored, 0.4, 0)
             
             with col3:
                 st.success("3. Giải thích (Vùng nhiệt)")
                 st.image(superimposed_img, use_column_width=True)
-                st.caption(f"Vùng màu ĐỎ là nơi AI phát hiện đặc điểm của {predicted_class}")
+                st.caption(f"AI dự đoán {predicted_class} ({confidence:.2f}%) dựa trên vùng màu ĐỎ.")
             
             # Hiển thị thông tin y khoa
             info = medical_info[predicted_class]
             st.write("---")
-            st.subheader(f"📋 Hồ sơ: {predicted_class}")
+            st.subheader(f"📋 Hồ sơ bệnh học: {predicted_class}")
             
             c1, c2 = st.columns([1, 2])
             with c1:
-                st.metric(label="Rủi ro", value=predicted_class, delta=info["risk"])
+                # Hiển thị lại % ở đây cho rõ
+                st.metric(label="Độ chính xác", value=f"{confidence:.2f}%", delta="AI Confidence")
+                st.write(f"**Rủi ro:** {info['risk']}")
             with c2:
                 st.info(f"**Mô tả:** {info['description']}")
                 st.warning(f"**Khuyến nghị:** {info['recommendation']}")
