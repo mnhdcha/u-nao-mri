@@ -45,27 +45,18 @@ def crop_brain_contour(image, plot=False):
         return new_image
     return image
 
-# --- HÀM GRAD-CAM "BỌC GIÁP" (Fix mọi lỗi version) ---
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     # 1. Tạo model phụ
-    # Sử dụng model.inputs (số nhiều) để an toàn nhất
     grad_model = tf.keras.models.Model(
         model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
-    # 2. Tính toán Gradient
+    # 2. Tính Gradient
     with tf.GradientTape() as tape:
         last_conv_layer_output, preds = grad_model(img_array)
-        
-        # --- ĐOẠN CODE TRỊ LỖI QUAN TRỌNG NHẤT ---
-        # Kiểm tra: Nếu preds bị trả về dạng List (do khác version), lấy phần tử đầu tiên
-        if isinstance(preds, list):
-            preds = preds[0]
-        
-        # Đảm bảo nó là Tensor để tính toán được
+        if isinstance(preds, list): preds = preds[0]
         preds = tf.convert_to_tensor(preds)
-        # -----------------------------------------
-
+        
         if pred_index is None:
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
@@ -76,7 +67,16 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
+    
+    # Chuẩn hóa về 0-1
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+    
+    # --- MẸO MỚI: LỌC NHIỄU (THRESHOLD) ---
+    # Chỉ giữ lại những vùng có độ quan trọng > 40%
+    # Những vùng viền sọ, hốc mắt lờ mờ sẽ bị biến mất
+    heatmap = tf.where(heatmap < 0.4, 0.0, heatmap) 
+    # --------------------------------------
+    
     return heatmap.numpy()
 
 # 3. Giao diện Web
