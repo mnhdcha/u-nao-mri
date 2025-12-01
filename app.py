@@ -53,17 +53,16 @@ def crop_brain_contour(image, plot=False):
         return new_image
     return image
 
-# Hàm 2: Tạo bản đồ nhiệt Grad-CAM (Có tính năng Che Viền - Spatial Masking)
+# --- HÀM GRAD-CAM (ĐÃ BỎ CHE VIỀN ĐỂ BẮT U SÁT SỌ) ---
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # Tạo model phụ để lấy gradient
+    # 1. Tạo model phụ
     grad_model = tf.keras.models.Model(
         model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
 
-    # Tính toán Gradient
+    # 2. Tính Gradient
     with tf.GradientTape() as tape:
         last_conv_layer_output, preds = grad_model(img_array)
-        # Xử lý lỗi version nếu preds trả về list
         if isinstance(preds, list): preds = preds[0]
         preds = tf.convert_to_tensor(preds)
         
@@ -71,34 +70,23 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
 
-    # Xử lý Heatmap thô
+    # 3. Tạo Heatmap
     grads = tape.gradient(class_channel, last_conv_layer_output)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
+    
+    # Chuẩn hóa về 0-1
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     
-    # --- KỸ THUẬT CHE VIỀN (SPATIAL MASKING) ---
-    # Giúp loại bỏ nhiễu ở xương sọ/hốc mắt
-    h, w = heatmap.shape
-    mask = np.zeros((h, w), dtype=np.float32)
+    # --- ĐÃ XÓA ĐOẠN MASKING (CHE VIỀN) Ở ĐÂY ---
+    # Để đảm bảo khối u sát sọ không bị mất
     
-    # Giữ lại vùng trung tâm, bỏ 15% viền mỗi bên
-    border_percentage = 0.15 
-    h_start = int(h * border_percentage)
-    h_end = int(h * (1 - border_percentage))
-    w_start = int(w * border_percentage)
-    w_end = int(w * (1 - border_percentage))
-    
-    mask[h_start:h_end, w_start:w_end] = 1.0
-    heatmap = heatmap * mask # Nhân để xóa viền
-    # -------------------------------------------
-
     return heatmap.numpy()
 
 # Hàm 3: Vẽ khung chữ nhật (Bounding Box) từ Heatmap
-def draw_bbox_from_heatmap(image, heatmap, threshold=0.45):
+def draw_bbox_from_heatmap(image, heatmap, threshold=0.55):
     # Nhị phân hóa Heatmap: Chỉ lấy vùng "nóng" nhất (trên 45%)
     heatmap_resized = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
     heatmap_uint8 = np.uint8(255 * heatmap_resized)
@@ -198,8 +186,9 @@ if uploaded_file is not None:
             heatmap_resized = cv2.resize(raw_heatmap, (cropped_image.shape[1], cropped_image.shape[0]))
             
             # Vẽ khung (Bounding Box) lên ảnh
-            bbox_img = draw_bbox_from_heatmap(cropped_image, raw_heatmap, threshold=0.45)
-            
+# Vẽ khung (Bounding Box) lên ảnh
+            # Tăng ngưỡng lên 0.5 để chỉ khoanh vùng thật sự đậm
+            bbox_img = draw_bbox_from_heatmap(cropped_image, raw_heatmap, threshold=0.5)            
             with col3:
                 st.success("3. Kết quả & Định vị")
                 st.image(bbox_img, use_column_width=True)
