@@ -46,7 +46,7 @@ def crop_brain_contour(image, plot=False):
     return image
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # 1. Tạo model phụ
+    # 1. Tạo model
     grad_model = tf.keras.models.Model(
         model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
     )
@@ -61,22 +61,31 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
             pred_index = tf.argmax(preds[0])
         class_channel = preds[:, pred_index]
 
-    # 3. Xử lý Heatmap
     grads = tape.gradient(class_channel, last_conv_layer_output)
     pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
     last_conv_layer_output = last_conv_layer_output[0]
     heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
     heatmap = tf.squeeze(heatmap)
-    
-    # Chuẩn hóa về 0-1
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     
-    # --- MẸO MỚI: LỌC NHIỄU (THRESHOLD) ---
-    # Chỉ giữ lại những vùng có độ quan trọng > 40%
-    # Những vùng viền sọ, hốc mắt lờ mờ sẽ bị biến mất
-    heatmap = tf.where(heatmap < 0.4, 0.0, heatmap) 
-    # --------------------------------------
+    # --- BIỆN PHÁP MẠNH: XÓA VIỀN (SPATIAL MASKING) ---
+    # Tạo một mặt nạ đen sì ở viền, trắng ở giữa
+    h, w = heatmap.shape
+    mask = np.zeros((h, w), dtype=np.float32)
     
+    # Chỉ giữ lại vùng trung tâm (bỏ 15% viền mỗi bên)
+    # Bạn có thể chỉnh số 0.15 thành 0.2 nếu muốn cắt sâu hơn
+    center_h_start = int(h * 0.15)
+    center_h_end = int(h * 0.85)
+    center_w_start = int(w * 0.15)
+    center_w_end = int(w * 0.85)
+    
+    mask[center_h_start:center_h_end, center_w_start:center_w_end] = 1.0
+    
+    # Nhân heatmap với mặt nạ -> Viền sẽ biến mất
+    heatmap = heatmap * mask
+    # --------------------------------------------------
+
     return heatmap.numpy()
 
 # 3. Giao diện Web
