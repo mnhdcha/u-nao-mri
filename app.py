@@ -31,9 +31,10 @@ medical_info = {
 }
 
 # ==========================================
-# 2. CÁC HÀM XỬ LÝ (CORE)
+# 2. CÁC HÀM XỬ LÝ ẢNH
 # ==========================================
 
+# Hàm tự động cắt viền đen (Crop)
 def crop_brain_contour(image, plot=False):
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -52,6 +53,7 @@ def crop_brain_contour(image, plot=False):
         return new_image
     return image
 
+# Hàm tạo Heatmap Grad-CAM (Vùng đỏ)
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
     grad_model = tf.keras.models.Model(
         model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
@@ -73,35 +75,14 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None
     heatmap = tf.squeeze(heatmap)
     heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
     
-    # LƯU Ý: Đã bỏ phần che viền đen (Spatial Masking) để bắt được u sát sọ
+    # LƯU Ý: Không dùng che viền để đảm bảo bắt được u sát sọ
     return heatmap.numpy()
-
-def draw_bbox_from_heatmap(image, heatmap, threshold=0.5):
-    # Nhị phân hóa Heatmap: Chỉ lấy vùng "nóng" trên 50%
-    heatmap_resized = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
-    heatmap_uint8 = np.uint8(255 * heatmap_resized)
-    
-    _, thresh = cv2.threshold(heatmap_uint8, int(255 * threshold), 255, cv2.THRESH_BINARY)
-    
-    cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-    
-    output_image = image.copy()
-    
-    if len(cnts) > 0:
-        c = max(cnts, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(c)
-        # Vẽ khung xanh lá
-        cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(output_image, "Tumor Region", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        
-    return output_image
 
 # ==========================================
 # 3. GIAO DIỆN WEB
 # ==========================================
-st.set_page_config(page_title="Chẩn Đoán U Não AI Pro", layout="wide")
-st.title("🧠 Hệ Thống Phân Tích MRI Não (EfficientNetB0)")
+st.set_page_config(page_title="Chẩn Đoán U Não AI", layout="wide")
+st.title("🧠 Hệ Thống Phân Tích MRI Não (Grad-CAM)")
 
 @st.cache_resource
 def load_model():
@@ -117,6 +98,7 @@ except Exception as e:
 uploaded_file = st.file_uploader("Chọn ảnh MRI...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
+    # Đọc ảnh
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     image = cv2.imdecode(file_bytes, 1)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -127,7 +109,7 @@ if uploaded_file is not None:
         st.info("1. Ảnh Gốc")
         st.image(image, use_column_width=True)
 
-    # Xử lý
+    # Xử lý ảnh
     cropped_image = crop_brain_contour(image)
     IMG_SIZE = 224 
     resized_image = cv2.resize(cropped_image, (IMG_SIZE, IMG_SIZE))
@@ -151,17 +133,22 @@ if uploaded_file is not None:
             
             st.divider()
             
-            # Grad-CAM & Bounding Box
+            # --- TẠO GRAD-CAM (VÙNG ĐỎ) ---
             last_conv_layer_name = "top_activation"
             heatmap = make_gradcam_heatmap(input_data, model, last_conv_layer_name)
             
-            # Vẽ khung (Với độ nhạy 0.5)
-            bbox_img = draw_bbox_from_heatmap(cropped_image, heatmap, threshold=0.5)
+            # Xử lý hiển thị màu
+            heatmap_resized = cv2.resize(heatmap, (cropped_image.shape[1], cropped_image.shape[0]))
+            heatmap_uint8 = np.uint8(255 * heatmap_resized)
+            heatmap_colored = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
+            
+            # Chồng ảnh (Superimpose)
+            superimposed_img = cv2.addWeighted(cropped_image, 0.6, heatmap_colored, 0.4, 0)
             
             with col3:
-                st.success("3. Định vị Khối u")
-                st.image(bbox_img, use_column_width=True)
-                st.caption(f"Kết quả: {predicted_class} ({confidence:.2f}%)")
+                st.success("3. Giải thích (Vùng nhiệt)")
+                st.image(superimposed_img, use_column_width=True)
+                st.caption(f"Vùng màu ĐỎ là nơi AI phát hiện đặc điểm của {predicted_class}")
             
             # Hiển thị thông tin y khoa
             info = medical_info[predicted_class]
