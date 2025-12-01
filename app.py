@@ -45,48 +45,34 @@ def crop_brain_contour(image, plot=False):
         return new_image
     return image
 
-def make_gradcam_heatmap(img_array, model, last_conv_layer_name, pred_index=None):
-    # 1. Tạo model
-    grad_model = tf.keras.models.Model(
-        model.inputs, [model.get_layer(last_conv_layer_name).output, model.output]
-    )
-
-    # 2. Tính Gradient
-    with tf.GradientTape() as tape:
-        last_conv_layer_output, preds = grad_model(img_array)
-        if isinstance(preds, list): preds = preds[0]
-        preds = tf.convert_to_tensor(preds)
+# --- HÀM MỚI: VẼ KHUNG BAO TỪ HEATMAP ---
+def draw_bbox_from_heatmap(image, heatmap, threshold=0.5):
+    # 1. Nhị phân hóa Heatmap: Chỉ lấy vùng "nóng" nhất (trên 50%)
+    # Biến heatmap thành ảnh đen trắng (Mask)
+    heatmap_resized = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+    heatmap_uint8 = np.uint8(255 * heatmap_resized)
+    
+    # Lọc ngưỡng: Chỉ giữ lại vùng có độ tin cậy > threshold
+    _, thresh = cv2.threshold(heatmap_uint8, int(255 * threshold), 255, cv2.THRESH_BINARY)
+    
+    # 2. Tìm đường viền (Contours) của vùng nóng đó
+    cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    output_image = image.copy()
+    
+    # 3. Vẽ hình chữ nhật bao quanh
+    if len(cnts) > 0:
+        # Tìm vùng lớn nhất (để tránh nhiễu nhỏ)
+        c = max(cnts, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(c)
         
-        if pred_index is None:
-            pred_index = tf.argmax(preds[0])
-        class_channel = preds[:, pred_index]
-
-    grads = tape.gradient(class_channel, last_conv_layer_output)
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-    last_conv_layer_output = last_conv_layer_output[0]
-    heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
-    heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
-    
-    # --- BIỆN PHÁP MẠNH: XÓA VIỀN (SPATIAL MASKING) ---
-    # Tạo một mặt nạ đen sì ở viền, trắng ở giữa
-    h, w = heatmap.shape
-    mask = np.zeros((h, w), dtype=np.float32)
-    
-    # Chỉ giữ lại vùng trung tâm (bỏ 15% viền mỗi bên)
-    # Bạn có thể chỉnh số 0.15 thành 0.2 nếu muốn cắt sâu hơn
-    center_h_start = int(h * 0.15)
-    center_h_end = int(h * 0.85)
-    center_w_start = int(w * 0.15)
-    center_w_end = int(w * 0.85)
-    
-    mask[center_h_start:center_h_end, center_w_start:center_w_end] = 1.0
-    
-    # Nhân heatmap với mặt nạ -> Viền sẽ biến mất
-    heatmap = heatmap * mask
-    # --------------------------------------------------
-
-    return heatmap.numpy()
+        # Vẽ khung màu xanh lá (Green), độ dày 2
+        cv2.rectangle(output_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Ghi chữ "Tumor Region"
+        cv2.putText(output_image, "Tumor Region", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+    return output_image
 
 # 3. Giao diện Web
 st.set_page_config(page_title="Chẩn Đoán U Não AI Pro", layout="wide")
@@ -170,10 +156,17 @@ if uploaded_file is not None:
             
             superimposed_img = cv2.addWeighted(cropped_image, 0.6, heatmap, 0.4, 0)
             
+# ... (Đoạn tạo heatmap cũ giữ nguyên) ...
+            
+            # --- ĐOẠN MỚI: VẼ KHUNG ---
+            bbox_img = draw_bbox_from_heatmap(cropped_image, heatmap, threshold=0.45) 
+            # Threshold 0.45 nghĩa là chỉ khoanh vùng những chỗ AI tin tưởng > 45%
+            
             with col3:
-                st.success("3. Giải thích (Grad-CAM)")
-                st.image(superimposed_img, use_column_width=True)
-                st.caption(f"AI đang nhìn vào vùng màu đỏ để kết luận là {predicted_class}")
+                st.success("3. Định vị Khối u")
+                # Hiển thị ảnh đã vẽ khung
+                st.image(bbox_img, use_column_width=True)
+                st.caption("AI khoanh vùng khu vực nghi ngờ nhất dựa trên Grad-CAM.")
                 
         except Exception as e:
             st.error(f"Không thể tạo Grad-CAM: {e}")
