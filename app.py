@@ -134,7 +134,7 @@ if uploaded_file is not None:
             st.divider()
             
             # --- TẠO GRAD-CAM (VÙNG ĐỎ) ---
-            last_conv_layer_name = "block6d_project_conv"
+            last_conv_layer_name = "block7a_project_conv"
             heatmap = make_gradcam_heatmap(input_data, model, last_conv_layer_name)
             
             # Xử lý hiển thị màu
