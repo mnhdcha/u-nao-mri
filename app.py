@@ -102,7 +102,7 @@ if uploaded_file is not None:
     image = cv2.imdecode(file_bytes, 1)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns([1, 1, 0.6])
     
     with col1:
         st.info("1. Ảnh Gốc")
