@@ -161,7 +161,7 @@ if uploaded_file is not None:
             with col3:
                 st.success("3. Giải thích (Vùng nhiệt)")
                 st.image(superimposed_img, use_column_width=True)
-                st.caption(f"AI dự đoán {predicted_class} ({confidence:.2f}%) dựa trên vùng màu ĐỎ.")
+                st.caption(f"AI dự đoán {predicted_class} ({confidence:.2f}%).")
             
             # Hiển thị thông tin y khoa
             info = medical_info[predicted_class]
